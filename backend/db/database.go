@@ -73,7 +73,6 @@ func InitDB() error {
 		log.Printf("Предупреждение: не удалось заполнить тестовые данные: %v", err)
 	}
 
-	log.Println("База данных инициализирована успешно")
 	return nil
 }
 
@@ -96,11 +95,8 @@ func seedMockData() error {
 	}
 
 	if count > 0 {
-		log.Println("База данных уже содержит проекты, пропускаем заполнение")
 		return nil
 	}
-
-	log.Println("Создаём тестовые проекты...")
 
 	var userCount int
 	err = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount)
@@ -119,7 +115,6 @@ func seedMockData() error {
 		if err != nil {
 			return err
 		}
-		log.Println("Создан демо-пользователь")
 	} else {
 
 		err = DB.QueryRow("SELECT id FROM users LIMIT 1").Scan(&demoUserID)

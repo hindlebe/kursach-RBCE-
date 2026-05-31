@@ -5,14 +5,14 @@ export const commentsService = {
   async getComments(id: string): Promise<{ comments: Comment[] }> {
     try {
       const response = await api.get(`/Comment/GetComments?id=${id}`);
-      // Убеждаемся, что ответ содержит массив comments
+      
       if (!response.data || !response.data.comments) {
         return { comments: [] };
       }
       return response.data;
     } catch (error) {
       console.error('API Error in getComments:', error);
-      // Возвращаем пустой массив 
+      
       return { comments: [] };
     }
   },

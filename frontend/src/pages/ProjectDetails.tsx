@@ -36,11 +36,11 @@ const ProjectDetails: React.FC = () => {
       const data = await topicsService.getTopic(id);
       setProject(data.topic);
       
-      // Безопасная проверка на участие
+      
       const userJoined = data.topic?.users?.some(u => u.username === user?.userName) || false;
       setIsJoined(userJoined);
       
-      // Initialize edit form
+      
       setEditForm({
         title: data.topic?.title || '',
         summary: data.topic?.summary || '',
@@ -63,7 +63,7 @@ const ProjectDetails: React.FC = () => {
     if (!id) return;
     try {
       await topicsService.joinLeaveTopic(id);
-      loadProject(); // Reload to get updated user list
+      loadProject(); 
     } catch (err) {
       setError('Не удалось присоединиться/выйти из проекта');
     }

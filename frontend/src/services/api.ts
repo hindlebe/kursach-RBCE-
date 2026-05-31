@@ -7,7 +7,6 @@ const api = axios.create({
   },
 });
 
-
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -21,33 +20,26 @@ api.interceptors.request.use(
   }
 );
 
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
-
-
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error.config?.url, error.response?.status, error.response?.data);
-    if (error.response?.status === 401) {
+    
+   
+    const isLoginRequest = error.config?.url?.includes('/login');
+    
+    if (error.response?.status === 401 && !isLoginRequest) {
+      
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
     
+   
     if (error.config?.url?.includes('/GetTopics') || error.config?.url?.includes('/GetComments')) {
       return Promise.resolve({ data: { topics: [], comments: [] } });
     }
+    
     return Promise.reject(error);
   }
 );

@@ -5,14 +5,14 @@ export const topicsService = {
   async getTopics(): Promise<{ topics: Topic[] }> {
     try {
       const response = await api.get('/Topics/GetTopics');
-      // Убеждаемся, что ответ содержит массив topics
+     
       if (!response.data || !response.data.topics) {
         return { topics: [] };
       }
       return response.data;
     } catch (error) {
       console.error('API Error in getTopics:', error);
-      // Возвращаем пустой массив вместо ошибки
+     
       return { topics: [] };
     }
   },

@@ -82,7 +82,7 @@ const Register: React.FC = () => {
       ...formData,
       [name]: value,
     });
-    // Очищаем ошибку для этого поля при вводе
+    
     if (errors[name]) {
       setErrors({ ...errors, [name]: '' });
     }

@@ -16,12 +16,12 @@ const ProjectsList: React.FC = () => {
     try {
       setLoading(true);
       const data = await topicsService.getTopics();
-      // Убеждаемся, что data.topics существует и это массив
+      
       setProjects(data?.topics || []);
     } catch (err: any) {
       console.error('Error loading projects:', err);
       setError(err.response?.data?.error || 'Не удалось загрузить проекты');
-      setProjects([]); // Устанавливаем пустой массив в случае ошибки
+      setProjects([]); 
     } finally {
       setLoading(false);
     }
