@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"student-projects-platform/db"
 	"student-projects-platform/models"
@@ -31,6 +32,61 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Валидация email
+	if !utils.ValidateEmail(req.Email) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный формат email"})
+		return
+	}
+
+	// Валидация пароля
+	if passwordErrors := utils.ValidatePassword(req.Password); len(passwordErrors) > 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Пароль не соответствует требованиям",
+			"details": passwordErrors,
+		})
+		return
+	}
+
+	// Валидация username
+	if len(strings.TrimSpace(req.UserName)) < 3 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Имя пользователя должно содержать минимум 3 символа"})
+		return
+	}
+	if len(req.UserName) > 50 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Имя пользователя не должно превышать 50 символов"})
+		return
+	}
+
+	// Валидация fullName
+	if len(strings.TrimSpace(req.FullName)) < 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Полное имя должно содержать минимум 2 символа"})
+		return
+	}
+	if len(req.FullName) > 100 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Полное имя не должно превышать 100 символов"})
+		return
+	}
+
+	// Валидация about (опционально, но с ограничением длины)
+	if len(req.About) > 500 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Информация о себе не должна превышать 500 символов"})
+		return
+	}
+
+	// Санитизация входных данных
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.UserName = utils.SanitizeString(strings.TrimSpace(req.UserName))
+	req.FullName = utils.SanitizeString(strings.TrimSpace(req.FullName))
+	req.About = utils.SanitizeString(strings.TrimSpace(req.About))
+
+	// Проверка существования пользователя
 	var count int
 	err := db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE email = ? OR user_name = ?", req.Email, req.UserName).Scan(&count)
 	if err != nil {
@@ -40,7 +96,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 	if count > 0 {
 		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]string{"error": "User already exists"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Пользователь с таким email или именем уже существует"})
 		return
 	}
 
@@ -87,6 +143,23 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Валидация email
+	if !utils.ValidateEmail(req.Email) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный формат email"})
+		return
+	}
+
+	// Валидация наличия пароля
+	if len(strings.TrimSpace(req.Password)) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Пароль не может быть пустым"})
+		return
+	}
+
+	// Санитизация email
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
 	hashedPassword := hashPassword(req.Password)
 
 	var userID, userName, email string
@@ -97,7 +170,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid credentials"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный email или пароль"})
 		return
 	}
 

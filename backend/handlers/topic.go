@@ -9,6 +9,7 @@ import (
 	"student-projects-platform/db"
 	"student-projects-platform/middleware"
 	"student-projects-platform/models"
+	"student-projects-platform/utils"
 
 	"github.com/google/uuid"
 )
@@ -27,7 +28,7 @@ func GetTopics(w http.ResponseWriter, r *http.Request) {
 	`)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Database error"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 		return
 	}
 	defer rows.Close()
@@ -82,7 +83,7 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "id parameter required"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Параметр id обязателен"})
 		return
 	}
 
@@ -96,7 +97,7 @@ func GetTopic(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Topic not found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Проект не найден"})
 		return
 	}
 
@@ -136,16 +137,78 @@ func CreateTopic(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetUserFromContext(r)
 	if claims == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не авторизован"})
 		return
 	}
 
 	var req models.CreateTopicRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный формат запроса"})
 		return
 	}
+
+	// Валидация названия проекта
+	if titleErrors := utils.ValidateProjectTitle(req.Title); len(titleErrors) > 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Название проекта не соответствует требованиям",
+			"details": titleErrors,
+		})
+		return
+	}
+
+	// Валидация описания проекта
+	if summaryErrors := utils.ValidateProjectSummary(req.Summary); len(summaryErrors) > 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Описание проекта не соответствует требованиям",
+			"details": summaryErrors,
+		})
+		return
+	}
+
+	// Валидация типа проекта
+	validTypes := map[string]bool{
+		"Development": true,
+		"Workshop":    true,
+		"Research":    true,
+		"Hackathon":   true,
+		"Other":       true,
+	}
+	if !validTypes[req.TopicType] {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный тип проекта"})
+		return
+	}
+
+	// Валидация локации
+	if len(strings.TrimSpace(req.Location.City)) < 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Укажите корректный город (минимум 2 символа)"})
+		return
+	}
+	if len(req.Location.City) > 100 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Название города не должно превышать 100 символов"})
+		return
+	}
+	if len(strings.TrimSpace(req.Location.Street)) < 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Укажите корректную улицу (минимум 2 символа)"})
+		return
+	}
+	if len(req.Location.Street) > 200 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Название улицы не должно превышать 200 символов"})
+		return
+	}
+
+	// Санитизация входных данных
+	req.Title = utils.SanitizeString(strings.TrimSpace(req.Title))
+	req.Summary = utils.SanitizeString(strings.TrimSpace(req.Summary))
+	req.Location.City = utils.SanitizeString(strings.TrimSpace(req.Location.City))
+	req.Location.Street = utils.SanitizeString(strings.TrimSpace(req.Location.Street))
 
 	topicID := uuid.New().String()
 	_, err := db.DB.Exec(`
@@ -155,7 +218,7 @@ func CreateTopic(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to create topic"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось создать проект"})
 		return
 	}
 
@@ -166,7 +229,7 @@ func CreateTopic(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to add organizer"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось добавить организатора"})
 		return
 	}
 
@@ -201,14 +264,14 @@ func UpdateTopic(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "id parameter required"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Параметр id обязателен"})
 		return
 	}
 
 	claims := middleware.GetUserFromContext(r)
 	if claims == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не авторизован"})
 		return
 	}
 
@@ -216,22 +279,60 @@ func UpdateTopic(w http.ResponseWriter, r *http.Request) {
 	err := db.DB.QueryRow("SELECT created_by FROM topics WHERE id = ? AND is_voided = 0", id).Scan(&createdBy)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Topic not found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Проект не найден"})
 		return
 	}
 
 	if createdBy != claims.UserID {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Only organizer can update topic"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Только организатор может редактировать проект"})
 		return
 	}
 
 	var req models.UpdateTopicRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request body"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный формат запроса"})
 		return
 	}
+
+	// Валидация названия проекта при обновлении
+	if titleErrors := utils.ValidateProjectTitle(req.Title); len(titleErrors) > 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Название проекта не соответствует требованиям",
+			"details": titleErrors,
+		})
+		return
+	}
+
+	// Валидация описания проекта при обновлении
+	if summaryErrors := utils.ValidateProjectSummary(req.Summary); len(summaryErrors) > 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Описание проекта не соответствует требованиям",
+			"details": summaryErrors,
+		})
+		return
+	}
+
+	// Валидация локации
+	if len(strings.TrimSpace(req.Location.City)) < 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Укажите корректный город (минимум 2 символа)"})
+		return
+	}
+	if len(strings.TrimSpace(req.Location.Street)) < 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Укажите корректную улицу (минимум 2 символа)"})
+		return
+	}
+
+	// Санитизация
+	req.Title = utils.SanitizeString(strings.TrimSpace(req.Title))
+	req.Summary = utils.SanitizeString(strings.TrimSpace(req.Summary))
+	req.Location.City = utils.SanitizeString(strings.TrimSpace(req.Location.City))
+	req.Location.Street = utils.SanitizeString(strings.TrimSpace(req.Location.Street))
 
 	_, err = db.DB.Exec(`
 		UPDATE topics
@@ -241,7 +342,7 @@ func UpdateTopic(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to update topic"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось обновить проект"})
 		return
 	}
 
@@ -271,14 +372,14 @@ func DeleteTopic(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/Topics/DeleteTopic/")
 	if id == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "id parameter required"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Параметр id обязателен"})
 		return
 	}
 
 	claims := middleware.GetUserFromContext(r)
 	if claims == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не авторизован"})
 		return
 	}
 
@@ -286,20 +387,20 @@ func DeleteTopic(w http.ResponseWriter, r *http.Request) {
 	err := db.DB.QueryRow("SELECT created_by FROM topics WHERE id = ? AND is_voided = 0", id).Scan(&createdBy)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Topic not found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Проект не найден"})
 		return
 	}
 
 	if createdBy != claims.UserID {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Only organizer can delete topic"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Только организатор может удалить проект"})
 		return
 	}
 
 	_, err = db.DB.Exec("UPDATE topics SET is_voided = 1 WHERE id = ?", id)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete topic"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось удалить проект"})
 		return
 	}
 
@@ -316,51 +417,60 @@ func JoinLeaveTopic(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "id parameter required"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Параметр id обязателен"})
 		return
 	}
 
 	claims := middleware.GetUserFromContext(r)
 	if claims == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Не авторизован"})
+		return
+	}
+
+	// Проверяем, существует ли проект
+	var projectExists bool
+	err := db.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM topics WHERE id = ? AND is_voided = 0)", id).Scan(&projectExists)
+	if err != nil || !projectExists {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Проект не найден"})
 		return
 	}
 
 	var count int
-	err := db.DB.QueryRow(`
+	err = db.DB.QueryRow(`
 		SELECT COUNT(*) FROM topic_users WHERE topic_id = ? AND user_id = ?
 	`, id, claims.UserID).Scan(&count)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Database error"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 		return
 	}
 
 	if count > 0 {
-
+		// Выход из проекта
 		_, err = db.DB.Exec(`
 			DELETE FROM topic_users WHERE topic_id = ? AND user_id = ?
 		`, id, claims.UserID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to leave topic"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось выйти из проекта"})
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(models.JoinLeaveResponse{Details: "Successfully left the topic", IsSuccess: true})
+		json.NewEncoder(w).Encode(models.JoinLeaveResponse{Details: "Вы успешно вышли из проекта", IsSuccess: true})
 	} else {
-
+		// Присоединение к проекту
 		_, err = db.DB.Exec(`
 			INSERT INTO topic_users (topic_id, user_id, role) VALUES (?, ?, ?)
 		`, id, claims.UserID, "Participant")
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to join topic"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Не удалось присоединиться к проекту"})
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(models.JoinLeaveResponse{Details: "Successfully joined the topic", IsSuccess: true})
+		json.NewEncoder(w).Encode(models.JoinLeaveResponse{Details: "Вы успешно присоединились к проекту", IsSuccess: true})
 	}
 }
